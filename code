@@ -1,0 +1,356 @@
+import javax.swing.*;
+import java.awt.*;
+import java.util.Arrays;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+
+class TSPSolver {
+    private int[][] graph;
+    private int numCities;
+    private int[] bestPath;
+    private int minDistance;
+
+    public TSPSolver(int numCities) {
+        this.numCities = numCities;
+        this.bestPath = new int[numCities];
+        this.minDistance = Integer.MAX_VALUE;
+    }
+
+    public int getMinDistance() {
+        return minDistance;
+    }
+
+    public int[] solve(int[][] graph) {
+        this.graph = graph;
+        boolean[] visited = new boolean[numCities];
+        int[] path = new int[numCities];
+        path[0] = 0; // Starting from city 0
+        visited[0] = true;
+        branchAndBound(1, 0, visited, path);
+        return bestPath;
+    }
+
+    private void branchAndBound(int level, int currentLength, boolean[] visited, int[] path) {
+        if (level == numCities) {
+            int distance = currentLength + graph[path[level - 1]][0]; // Return to starting city
+            if (distance < minDistance) {
+                minDistance = distance;
+                System.arraycopy(path, 0, bestPath, 0, numCities);
+            }
+            return;
+        }
+
+        for (int i = 0; i < numCities; i++) {
+            if (!visited[i]) {
+                visited[i] = true;
+                path[level] = i;
+                if (currentLength + graph[path[level - 1]][i] < minDistance) {
+                    branchAndBound(level + 1, currentLength + graph[path[level - 1]][i], visited, path);
+                }
+                visited[i] = false;
+            }
+        }
+    }
+}
+
+class DrawingPanel extends JPanel {
+    private int[][] coordinates;
+    private int[] path;
+    private int numCities;
+    private int personX, personY;
+    private int personIndex;
+    private boolean running;
+    private String[] cityNames;
+    private boolean[] visitedCities;
+
+    public DrawingPanel(int numCities, String[] cityNames) {
+        this.numCities = numCities;
+        this.cityNames = cityNames;
+        this.coordinates = new int[numCities][2];
+        this.visitedCities = new boolean[numCities];
+        generateCoordinates();
+    }
+
+    private void generateCoordinates() {
+        for (int i = 0; i < numCities; i++) {
+            coordinates[i][0] = (int) (Math.random() * 400) + 50;
+            coordinates[i][1] = (int) (Math.random() * 400) + 50;
+        }
+        personX = coordinates[0][0];
+        personY = coordinates[0][1];
+    }
+
+    public void setPath(int[] path) {
+        this.path = path;
+        personIndex = 0;
+        personX = coordinates[path[0]][0];
+        personY = coordinates[path[0]][1];
+        Arrays.fill(visitedCities, false); // Reset visited cities
+        visitedCities[path[0]] = true; // Mark starting city as visited
+        repaint();
+        running = true;
+        new Thread(new PersonMover()).start();
+    }
+
+    private class PersonMover implements Runnable {
+        @Override
+        public void run() {
+            try {
+                while (running) {
+                    for (int i = 0; i < path.length - 1; i++) {
+                        movePerson(path[i], path[i + 1]);
+                    }
+                    movePerson(path[path.length - 1], path[0]);
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        private void movePerson(int startCity, int endCity) throws InterruptedException {
+            int startX = coordinates[startCity][0];
+            int startY = coordinates[startCity][1];
+            int endX = coordinates[endCity][0];
+            int endY = coordinates[endCity][1];
+            int steps = 50;
+            for (int step = 0; step <= steps; step++) {
+                personX = startX + (endX - startX) * step / steps;
+                personY = startY + (endY - startY) * step / steps;
+                repaint();
+                Thread.sleep(50);
+            }
+            visitedCities[endCity] = true; // Mark the city as visited
+            repaint();
+        }
+    }
+
+    public void stopAnimation() {
+        running = false;
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        super.paintComponent(g);
+
+        // Draw cities
+        for (int i = 0; i < numCities; i++) {
+            if (visitedCities[i]) {
+                g.setColor(Color.GREEN); // Color for visited cities
+            } else {
+                g.setColor(Color.BLUE); // Color for unvisited cities
+            }
+            g.fillOval(coordinates[i][0], coordinates[i][1], 20, 20);
+            g.drawString(cityNames[i], coordinates[i][0] + 5, coordinates[i][1] - 10);
+        }
+
+        // Draw path
+        if (path != null) {
+            g.setColor(Color.RED);
+            for (int i = 0; i < path.length - 1; i++) {
+                g.drawLine(coordinates[path[i]][0] + 10, coordinates[path[i]][1] + 10,
+                           coordinates[path[i + 1]][0] + 10, coordinates[path[i + 1]][1] + 10);
+            }
+            // Draw line from last city to the first city
+            g.drawLine(coordinates[path[path.length - 1]][0] + 10, coordinates[path[path.length - 1]][1] + 10,
+                       coordinates[path[0]][0] + 10, coordinates[path[0]][1] + 10);
+        }
+
+        // Draw person
+        g.setColor(Color.RED);
+        g.fillOval(personX - 5, personY - 5, 10, 10);
+    }
+}
+
+public class TSPSolverGUI extends JFrame {
+    private JPanel panel;
+    private JButton solveButton;
+    private JButton stopButton;
+    private JButton resetButton;
+    private JTextArea resultTextArea;
+    private JTextField[][] distanceFields;
+    private int numCities;
+    private DrawingPanel drawingPanel;
+    private JButton submitButton;
+    private JTextField[] cityNamesFields;
+
+    public TSPSolverGUI() {
+        setTitle("TSP Solver");
+        setSize(800, 600);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        panel = new JPanel();
+        panel.setLayout(new BorderLayout());
+
+        JPanel inputPanel = new JPanel();
+        JLabel label = new JLabel("Enter the number of cities:");
+        JTextField numCitiesField = new JTextField(5);
+        submitButton = new JButton("Submit");
+        inputPanel.add(label);
+        inputPanel.add(numCitiesField);
+        inputPanel.add(submitButton);
+        panel.add(inputPanel, BorderLayout.NORTH);
+
+        solveButton = new JButton("Solve TSP");
+        stopButton = new JButton("Stop Animation");
+        resetButton = new JButton("Reset");
+        resultTextArea = new JTextArea(10, 30);
+        resultTextArea.setEditable(false);
+
+        submitButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                try {
+                    numCities = Integer.parseInt(numCitiesField.getText());
+                    createCityNameFields(numCities);
+                    panel.add(new JScrollPane(resultTextArea), BorderLayout.EAST);
+                    pack();
+                    submitButton.setEnabled(false); // Disable the submit button after clicking
+                } catch (NumberFormatException ex) {
+                    JOptionPane.showMessageDialog(null, "Please enter a valid number of cities.");
+                }
+            }
+        });
+
+        solveButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                solveTSP();
+                JPanel buttonPanel = new JPanel(new FlowLayout());
+                buttonPanel.add(stopButton);
+                buttonPanel.add(resetButton);
+                panel.add(buttonPanel, BorderLayout.SOUTH);
+                panel.remove(solveButton); // Disable the solve button after clicking
+                pack();
+            }
+        });
+
+        stopButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                if (drawingPanel != null) {
+                    drawingPanel.stopAnimation();
+                }
+            }
+        });
+
+        resetButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                resetGUI();
+            }
+        });
+
+        add(panel);
+        setVisible(true);
+    }
+
+    private void createCityNameFields(int numCities) {
+        cityNamesFields = new JTextField[numCities];
+        JPanel cityNamesPanel = new JPanel(new GridLayout(numCities + 1, 2));
+        for (int i = 0; i < numCities; i++) {
+            cityNamesPanel.add(new JLabel("City " + (i + 1) + ":"));
+            cityNamesFields[i] = new JTextField(15);
+            cityNamesPanel.add(cityNamesFields[i]);
+        }
+        JButton submitNamesButton = new JButton("Submit City Names");
+        cityNamesPanel.add(new JLabel("")); // Empty cell to align the button
+        cityNamesPanel.add(submitNamesButton);
+        panel.add(cityNamesPanel, BorderLayout.CENTER);
+        submitNamesButton.addActionListener(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                panel.remove(cityNamesPanel);
+                createDistanceFields(numCities);
+                drawingPanel = new DrawingPanel(numCities, getCityNames());
+                panel.add(drawingPanel, BorderLayout.CENTER);
+                panel.revalidate();
+                panel.repaint();
+                pack();
+            }
+        });
+    }
+
+    private String[] getCityNames() {
+        String[] cityNames = new String[numCities];
+        for (int i = 0; i < numCities; i++) {
+            cityNames[i] = cityNamesFields[i].getText();
+        }
+        return cityNames;
+    }
+
+    private void createDistanceFields(int numCities) {
+        distanceFields = new JTextField[numCities][numCities];
+        JPanel inputPanel = new JPanel(new GridLayout(numCities + 1, numCities + 1));
+        inputPanel.add(new JLabel(""));
+        for (int i = 0; i < numCities; i++) {
+            inputPanel.add(new JLabel(cityNamesFields[i].getText()));
+        }
+        for (int i = 0; i < numCities; i++) {
+            inputPanel.add(new JLabel(cityNamesFields[i].getText()));
+            for (int j = 0; j < numCities; j++) {
+                if (i == j) {
+                    JTextField field = new JTextField("0", 5);
+                    field.setEditable(false);
+                    inputPanel.add(field);
+                } else {
+                    JTextField field = new JTextField(5);
+                    inputPanel.add(field);
+                    distanceFields[i][j] = field;
+                }
+            }
+        }
+        panel.add(inputPanel, BorderLayout.CENTER);
+        panel.add(solveButton, BorderLayout.SOUTH);
+        pack();
+    }
+
+    private void solveTSP() {
+        int[][] graph = new int[numCities][numCities];
+        try {
+            for (int i = 0; i < numCities; i++) {
+                for (int j = 0; j < numCities; j++) {
+                    if (i != j) {
+                        graph[i][j] = Integer.parseInt(distanceFields[i][j].getText());
+                    }
+                }
+            }
+
+            TSPSolver solver = new TSPSolver(numCities);
+            int[] path = solver.solve(graph);
+            drawingPanel.setPath(path);
+            StringBuilder result = new StringBuilder();
+            result.append("Optimal Path: ");
+            for (int city : path) {
+                result.append(cityNamesFields[city].getText()).append(" ");
+            }
+            result.append("\nTotal Distance: ").append(solver.getMinDistance());
+            resultTextArea.setText(result.toString());
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(null, "Please enter valid distances.");
+        }
+    }
+
+    private void resetGUI() {
+        panel.removeAll();
+        panel.repaint();
+        panel.revalidate();
+
+        submitButton.setEnabled(true);
+        solveButton.setEnabled(true);
+
+        JTextField numCitiesField = new JTextField(5);
+        JPanel inputPanel = new JPanel();
+        JLabel label = new JLabel("Enter the number of cities:");
+        inputPanel.add(label);
+        inputPanel.add(numCitiesField);
+        inputPanel.add(submitButton);
+
+        panel.add(inputPanel, BorderLayout.NORTH);
+        panel.revalidate();
+        panel.repaint();
+        pack();
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(new Runnable() {
+            public void run() {
+                new TSPSolverGUI();
+            }
+        });
+    }
+}
